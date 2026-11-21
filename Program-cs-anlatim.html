@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8" />
+<title>SalesPulse DataGenerator — Program.cs Anlatımı</title>
+<style>
+  @page { size: A4; margin: 18mm 16mm; }
+  body { font-family: "Segoe UI", Calibri, Arial, sans-serif; font-size: 11pt; line-height: 1.45; color: #1a1a1a; }
+  h1 { font-size: 20pt; margin: 0 0 6pt; }
+  h2 { font-size: 14pt; margin: 18pt 0 8pt; border-bottom: 1px solid #ccc; padding-bottom: 4pt; page-break-after: avoid; }
+  h3 { font-size: 12pt; margin: 12pt 0 6pt; page-break-after: avoid; }
+  p { margin: 0 0 8pt; }
+  .meta { color: #555; font-size: 10pt; margin-bottom: 16pt; }
+  pre, code { font-family: Consolas, "Courier New", monospace; font-size: 9pt; }
+  pre { background: #f4f4f4; padding: 10pt; white-space: pre-wrap; word-break: break-word; border: 1px solid #ddd; page-break-inside: avoid; }
+  table { border-collapse: collapse; width: 100%; margin: 8pt 0 12pt; font-size: 10pt; }
+  th, td { border: 1px solid #ccc; padding: 6pt 8pt; text-align: left; vertical-align: top; }
+  th { background: #eee; }
+  ul, ol { margin: 0 0 10pt; padding-left: 18pt; }
+  li { margin-bottom: 4pt; }
+  .box { border: 1px solid #bbb; padding: 10pt; margin: 10pt 0; page-break-inside: avoid; }
+  .kicker { font-size: 10pt; letter-spacing: .04em; text-transform: uppercase; color: #555; }
+</style>
+</head>
+<body>
+
+<p class="kicker">SalesPulse · M&amp;Y Akademi Dapper Case</p>
+<h1>DataGenerator Program.cs — Satır Satır Anlatım</h1>
+<p class="meta">Bu belge ezber listesi değildir. Dosyanın neden yazıldığını, sıranın neden böyle olduğunu ve her bloğun SQL’e ne yaptığını anlatır.<br>
+Proje: SalesProjetDapper.DataGenerator · Hedef: boş tablolara sahte ama gerçekçi satış verisi basmak.</p>
+
+<h2>1. Bu dosya ne işe yarar?</h2>
+<p>Web sitesi değildir. Kullanıcı tıklamaz. Visual Studio’da DataGenerator’ı startup yapıp F5’e basınca açılan bir konsol programıdır. Görevi: appsettings.json’dan sayıları okumak, LocalDB’deki SalesPulse veritabanına bağlanmak, eski satırları silmek, Catalog listelerinden il / kategori / ürün / müşteri / sipariş üretmek, SqlBulkCopy ile SQL’e yüklemek, kapanmak.</p>
+<p>Neden Web projesinin içinde değil? 40 bin (ileride 2 milyon) satır tarayıcı isteğiyle üretilmez. INSERT’i 40.000 kez Dapper ile döndürmek de yavaştır. Konsol + SqlBulkCopy “kamyonla yükleme”dir; satır satır kamyonet değildir.</p>
+<p>Hoca JSON dosyasından hazır sipariş basmayı istemez. Dağılım C# içinde üretilir: İstanbul daha sık, Aralık daha yoğun, az müşteri çok sipariş.</p>
+
+<div class="box">
+<strong>Tek cümle:</strong> Program.cs, Catalog’daki gerçekçi dağılımı SQL tablolarına boşaltır. Web uygulaması sonra o tablolardan KPI ve grafik çeker.
+</div>
+
+<h2>2. Çalışma sırası (bunu bozma)</h2>
+<p>Foreign key vardır: sipariş, var olmayan müşteriye bağlanamaz. O yüzden doldurma sırası zorunludur:</p>
+<ol>
+  <li>appsettings.json oku</li>
+  <li>SQL bağlantısını aç</li>
+  <li>Eski veriyi sil (FK’nin tersi sırada)</li>
+  <li>Cities (81 il)</li>
+  <li>Categories (30 kategori)</li>
+  <li>Products (ürün kategori ister)</li>
+  <li>Customers (müşteri şehir ister)</li>
+  <li>Orders + OrderDetails + Payments birlikte</li>
+</ol>
+<p>Tersine doldursan SQL “bu CityId / CustomerId yok” der.</p>
+
+<h2>3. using — hangi alet çantası</h2>
+<pre>using System.Data;
+using Microsoft.Data.SqlClient;
+using Microsoft.Extensions.Configuration;
+using SalesProjetDapper.DataGenerator;</pre>
+<table>
+  <tr><th>Satır</th><th>Ne için</th></tr>
+  <tr><td>System.Data</td><td>DataTable: bellekte tablo. SQL’e basılacak kova.</td></tr>
+  <tr><td>Microsoft.Data.SqlClient</td><td>SqlConnection ve SqlBulkCopy. SQL Server sürücüsü.</td></tr>
+  <tr><td>Microsoft.Extensions.Configuration</td><td>appsettings.json okuma. Sayıları koda gömmemek için.</td></tr>
+  <tr><td>SalesProjetDapper.DataGenerator</td><td>Catalog sınıfı (iller, isimler, ay ağırlıkları).</td></tr>
+</table>
+<p>Kendi projenin adı alt çizgisizdir. Referans kopyada Sales_Projet_Dapper.DataGenerator yazar; sen using’i SalesProjetDapper.DataGenerator yapmazsan Catalog kırmızı yanar.</p>
+
+<h2>4. Ayarları okumak</h2>
+<pre>var config = new ConfigurationBuilder()
+    .SetBasePath(AppContext.BaseDirectory)
+    .AddJsonFile("appsettings.json", optional: false)
+    .Build();</pre>
+<p><code>AppContext.BaseDirectory</code> exe’nin klasörüdür (bin\Debug\net8.0). JSON’un Properties’inde Copy to Output Directory = Copy if newer olmazsa dosya orada olmaz; program “file not found” veya ConnectionString missing der.</p>
+<p><code>optional: false</code> dosya yoksa sessizce boş geçmesin, hata versin diye.</p>
+<pre>var connectionString = config["ConnectionString"] ?? throw new InvalidOperationException("ConnectionString missing");
+var customerCount = int.Parse(config["Customers"] ?? "100000");
+var productCount = int.Parse(config["Products"] ?? "5000");
+var orderCount = int.Parse(config["Orders"] ?? "2000000");
+var batchSize = int.Parse(config["BatchSize"] ?? "50000");</pre>
+<p>?? anlamı: JSON’da yoksa sağdaki yedek (veya throw). Geliştirmede 40.000 sipariş, teslimde 2.000.000 için sadece JSON değişir; C#’a dokunmazsın. Web projesindeki key SqlConnection (ConnectionStrings altında) ile karıştırma. Generator’da kökte ConnectionString vardır.</p>
+<p>Konsola hedef yazılır ki F5’te “acaba çalıştı mı?” diye tahmin etmeyesin.</p>
+
+<h2>5. Bağlantı, ağırlıklar, zar</h2>
+<pre>await using var connection = new SqlConnection(connectionString);
+await connection.OpenAsync();</pre>
+<p>Kapı açılır. await using iş bitince bağlantıyı kapatır. Open olmadan BulkCopy yazamaz.</p>
+<pre>var cityWeights = Catalog.Cities.Select(c => c.Weight).ToArray();
+var rng = new Random(2026);</pre>
+<p>cityWeights: İstanbul 180, küçük il 2. WeightedIndex bu diziyle “adil olmayan kura” çeker. Büyük şehir daha sık çıkar; gerçek e-ticaret gibi.</p>
+<p>Random(2026): 2026 tohumdur. Aynı tohum ≈ aynı sahte dünya. Her F5’te tamamen başka müşteri/sipariş olmasın diye. Sunumda “neden her seferinde top müşteri değişti?” sorulmasın.</p>
+
+<h2>6. Ana çağrı sırası</h2>
+<pre>await TruncateAsync(connection);
+await BulkCitiesAsync(connection);
+await BulkCategoriesAsync(connection);
+await BulkProductsAsync(connection, productCount, rng);
+await BulkCustomersAsync(connection, customerCount, cityWeights, rng);
+await BulkOrdersAsync(connection, orderCount, customerCount, productCount, cityWeights, batchSize, rng);</pre>
+<p>Her await bir önceki bitmeden sonrakine geçmez. Ürünü müşteriden önce basmak gerekir; sipariş ikisini de ister.</p>
+<p>En sonda konsol “Tamamlandı, indeks ve SP çalıştırın” der. İndeks henüz yoksa (Adım 5) bulk daha hızlıdır. Önce veri, sonra indeks — bilinçli sıra.</p>
+
+<h2>7. TruncateAsync — silme</h2>
+<p>İsim Truncate ama komut DELETE’tir. FK’li tabloda TRUNCATE çoğu zaman izin vermez.</p>
+<p>Silme sırası doldurmanın tersidir: önce Payments, OrderDetails, Orders, Customers, Products, Categories, en sonda Cities. Çocuk varken baba silinmez.</p>
+<p>CommandTimeout = 0: süre sınırı yok. 2 milyon satırda 30 saniyede kesilmesin.</p>
+<p>Sonuç: her F5 tabloları sıfırlar, üstüne eklemez. SSMS’te 40.000 görüp script’i veya generator’ı tekrar çalıştırırsan tekrar 0’dan başlar.</p>
+
+<h2>8. BulkAsync — asıl yükleyici</h2>
+<p>Diğer Bulk* metodları DataTable doldurur; SQL’e basan tek yer burasıdır.</p>
+<pre>using var bulk = new SqlBulkCopy(connection,
+    keepIdentity ? SqlBulkCopyOptions.KeepIdentity : SqlBulkCopyOptions.Default, null);
+bulk.DestinationTableName = tableName;
+bulk.BulkCopyTimeout = 0;
+// kolon adı = SQL kolon adı
+await bulk.WriteToServerAsync(table);</pre>
+<table>
+  <tr><th>Kavram</th><th>Anlamı</th></tr>
+  <tr><td>DataTable</td><td>RAM’de satırlar. Henüz SQL değil.</td></tr>
+  <tr><td>SqlBulkCopy</td><td>Kovayı SQL tablosuna tek seferde (veya büyük parçalarla) döker. 40.000 INSERT’ten hızlıdır.</td></tr>
+  <tr><td>KeepIdentity true</td><td>Senin CityId=1,2,3 değerlerin kalsın. SQL IDENTITY’yi kendisi 5’ten başlatmasın. Siparişte CityId=1 yazıyorsan 1 gerçekten İstanbul olmalı.</td></tr>
+  <tr><td>KeepIdentity false</td><td>OrderDetails ve Payments. Satır Id’sini SQL versin. Senin bağladığın OrderId yeter.</td></tr>
+  <tr><td>ColumnMappings</td><td>DataTable “Name” ↔ SQL “Name”. İsim şemayla aynı olmazsa kolon boş veya hata.</td></tr>
+</table>
+
+<h2>9. BulkCitiesAsync / BulkCategoriesAsync</h2>
+<p>Catalog.Cities ve Catalog.Categories üzerinde döner. i=0 iken Id=1 (SQL 1’den başlar). İsim ve bölge listeden gelir. KeepIdentity true.</p>
+<p>JSON yok. 81 il ve 30 kategori kodda sabittir; generator her çalıştığında aynı iller, aynı Id’ler.</p>
+
+<h2>10. BulkProductsAsync</h2>
+<pre>var categoryId = ((i - 1) % Catalog.Categories.Length) + 1;</pre>
+<p>% kalan operatörüdür. 30 kategori varsa 1. ürün kat 1, 31. ürün yine kat 1. Ürünler kategorilere eşit dağılır; tek kategoride 5000 ürün olmaz.</p>
+<p>Fiyat: 19.90 ile yaklaşık 4819.90 arası rastgele, 2 ondalık.</p>
+<p>IsActive: NextDouble() &gt; 0.04 → kabaca %96 aktif, %4 pasif. Gerçek katalogda her SKU satışta değildir.</p>
+<p>İsim örneği: "Elektronik #0001". Uydurma ama kategori adını taşır; raporlarda okunur.</p>
+
+<h2>11. BulkCustomersAsync</h2>
+<p>25.000 satırı tek seferde RAM’de tutmak yerine 20.000’lik dilimler: doldur → BulkAsync → Clear → devam. Bellek şişmesin, konsolda “Customers: 20000” diye ilerleme gör.</p>
+<ul>
+  <li>Ad ve soyad Catalog dizilerinden rastgele. Aynı isim tekrarı normal (sahte veri).</li>
+  <li>E-posta user{i}@mail.salespulse.local — şemada email unique; i benzersiz olduğu için çakışmaz.</li>
+  <li>CityId = WeightedIndex(cityWeights, rng) + 1 — İstanbul daha sık.</li>
+  <li>RegisteredAt: 2021-01-01’den itibaren rastgele gün. Sipariş tarihi 2023’ten başlar; kayıt siparişten önce durur, mantıklı geçmiş.</li>
+</ul>
+
+<h2>12. BulkOrdersAsync — asıl zekâ</h2>
+<p>Üç DataTable: orders, details, payments. Sipariş başlığı, kalemler, tahsilat. 10.000’de bir (batchSize) üçü birlikte basılır. Siparişi basıp kalemi yarına bırakırsan FK kırılır.</p>
+
+<h3>12.1 Hangi müşteri? (Zipf benzeri)</h3>
+<pre>customerId = 1 + (int)(Math.Pow(rng.NextDouble(), 2.15) * (customerCount - 1));</pre>
+<p>NextDouble() 0 ile 1 arası. Üssü 2.15 alınca sonuç çoğu zaman küçük kalır. Id’ler 1, 2, 3 civarına yığılır: az müşteri çok sipariş. Düz rng.Next(1, customerCount) olsa herkes eşit; “en yüksek ciro 20 müşteri” grafiği anlamsız olurdu. Ürün seçimi aynı fikir, üs 1.8: az ürün çok satılır.</p>
+
+<h3>12.2 Hangi gün? WeightedDay</h3>
+<p>2023-01-01 ile bugün arasında rastgele bir gün (saat 8–23) üretir. O ayın MonthWeight değerine bakar. Aralık 160, Ocak 70. Zar: 0–169 arası sayı ağırlıktan küçükse tarihi kabul eder, değilse başka gün dener. Kasım–Aralık zirvesi böyle çıkar. MonthWeight[0] yanlışlıkla 0 kalırsa Ocak neredeyse hiç kabul edilmez.</p>
+
+<h3>12.3 Durum ve ödeme</h3>
+<p>Catalog.Statuses içinde Completed yedi kez yazılıdır → çoğunluk tamamlanmış sipariş. Payments içinde CreditCard üç kez → kart baskın. Dizide tekrar, if-else kalabalığından basit bir ağırlıktır.</p>
+
+<h3>12.4 Kalemler</h3>
+<p>%55 ihtimal tek kalem, değilse 2–4 kalem. LineTotal = birim fiyat × adet. TotalAmount C#’ta kalemlerden toplanır. Header tutarı ile detay toplamı çelişmesin diye SQL’e ayrı ayrı uydurulmaz.</p>
+
+<h3>12.5 Payments</h3>
+<p>Sipariş başına bir satır (şemada OrderId unique). Cancelled veya Pending ise PaidAt boş (DBNull): tahsilat olmamış. Cancelled → Failed, Pending → Pending, diğerleri → Paid. İptalde para alınmış gibi durmasın.</p>
+
+<h3>12.6 OrderNumber</h3>
+<p>SP + 10 haneli numara (SP0000000001). Unique kısıt var; i tekil olduğu için çakışmaz. Ekranda kullanıcıya gösterilen sipariş no budur, ham OrderId değil.</p>
+
+<h2>13. WeightedIndex — ağırlıklı kura</h2>
+<p>Ağırlıkları topla (örnek 1500). 0 ile 1499 arası zar at. Birikimli aralık: 0–179 İstanbul, sonraki 80 Ankara… Büyük ağırlık = daha geniş aralık = daha sık seçilme. 81 ile eşit rng.Next(81) kullanırsan İstanbul ile Bayburt aynı sıklıkta çıkar; bölgesel ciro grafiği yalan olur. +1 çünkü dizi 0’dan, SQL Id 1’den başlar.</p>
+
+<h2>14. Bu kodun hocanın ödevindeki yeri</h2>
+<ul>
+  <li>Hacim: raporlar boş tabloda anlamsız; GROUP BY / HAVING için binlerce satır gerekir.</li>
+  <li>Gerçekçilik: eşit rastgele veri “İstanbul 1. sırada” üretmez; ağırlık ve Zipf bunun için.</li>
+  <li>Performans hikâyesi: önce bulk, sonra indeks. Generator indeks yokken daha hızlı dolar.</li>
+  <li>Web’den ayrılık: panel 2 milyon satır üretmez, sadece okur.</li>
+</ul>
+
+<h2>15. F5 sonrası ne görmelisin?</h2>
+<p>Konsol: Cities 81, Categories 30, Products 5.000, Customers 25.000, Orders 40.000.</p>
+<p>SSMS:</p>
+<pre>USE SalesPulse;
+SELECT COUNT(*) FROM dbo.Cities;      -- 81
+SELECT COUNT(*) FROM dbo.Customers;   -- 25000
+SELECT COUNT(*) FROM dbo.Orders;      -- 40000</pre>
+<p>Hâlâ 0 ise ya hâlâ Hello World Program.cs çalışıyordur, ya startup proje Web’dir, ya bağlantı başka sunucuyadır.</p>
+
+<h2>16. Okuma haritası (ezberleme)</h2>
+<ol>
+  <li>JSON = kaç satır ve nereye bağlanacağım.</li>
+  <li>Truncate = FK tersi silme, her çalıştırmada temiz sayfa.</li>
+  <li>Bulk* = DataTable doldur.</li>
+  <li>BulkAsync = kamyon (SqlBulkCopy), KeepIdentity Id’leri senin verdiğin gibi tutar.</li>
+  <li>WeightedIndex / WeightedDay / pow = gerçekçi çarpıklık, eşit zar değil.</li>
+  <li>Sipariş + kalem + ödeme aynı batch’te = ilişki kopmasın.</li>
+</ol>
+<p>Web tarafındaki Dapper henüz bu dosyada yoktur. Bu dosya sadece yazar. Okuyan DashboardService Adım 8’dedir.</p>
+
+</body>
+</html>
