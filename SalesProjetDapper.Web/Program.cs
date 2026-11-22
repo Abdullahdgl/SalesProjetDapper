@@ -1,9 +1,12 @@
 
+using SalesProjetDapper.Web.Context;
 using SalesProjetDapper.Web.Extensions;
+using SalesProjetDapper.Web.Services.Dashboard;
 
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.RegisterServices();
+builder.Services.AddScoped<AppDbContext>();
 
 // Add services to the container.
 builder.Services.AddControllersWithViews();
