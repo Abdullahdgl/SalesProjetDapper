@@ -2,6 +2,10 @@
 {
 	public sealed class OrderFilter
 	{
+		//burdaki propertyleri yazmaktaki amacım aslında bir arama formu oluşturmak tarayıcıda!!!
+		//misal tarayıcıda ahmet diye arattığımızda ?search=Abdullah&page=2 ..... gibi gönderir ama mvc bunu görmeyebilir. ? ise aslında burada bir filtre yok db de 
+
+
 		public string? Search { get; set; }
 		public DateTime? FromDate { get; set; }
 		public DateTime? ToDate { get; set; }

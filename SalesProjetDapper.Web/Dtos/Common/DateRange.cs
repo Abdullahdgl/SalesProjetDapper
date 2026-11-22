@@ -2,7 +2,7 @@
 {
 
 	//rapor aralığı. Last12Months(): bugün ve 11 ay önceki ayın 1’i.
-	public sealed record DateRange(DateTime from, DateTime To)
+	public sealed record DateRange(DateTime From, DateTime To)
 	{
 		public static DateRange Last12Months()
 		{

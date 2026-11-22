@@ -6,6 +6,6 @@
 		public int Year { get; set; }
 		public int Month { get; set; }
 		public decimal Revenue { get; set; }
-		public string Label => $"{Year}--{Month:00}";
+		public string Label => $"{Year}-{Month:00}";
 	}
 }

@@ -2,7 +2,7 @@
 {
 	public sealed class OrderListItem
 	{
-		public long OrderID { get; set; }
+		public long OrderId { get; set; }
 		public string OrderNumber { get; set; } = string.Empty;
 		public string CustomerName { get; set; } = string.Empty;
 		public string CityName { get; set; } = string.Empty;
