@@ -1,0 +1,54 @@
+﻿@{
+    ViewData["Title"] = "Kontrol Paneli";
+}
+
+<h1>Satış Özeti</h1>
+
+<label>Başlangıç : <input type="date" id="fromDate" /> </label>
+<label>Bitiş : <input type="date" id="toDate" /> </label>
+
+<button type="button" id="applyRange">UYGULA</button>
+
+<hr />
+
+<p>Toplam Sipariş <strong id="kpiOrders">-----</strong></p>
+<p>Toplam Ciro <strong id="kpiRevenue">-----</strong></p>
+<p>Toplam Müşteri <strong id="kpiCustomers">-----</strong></p>
+<p>Ortalama Sepeti  <strong id="kpiBasket">-----</strong></p>
+
+<hr />
+<h3>Aylık Satış </h3>
+<canvas id="monthlyChart"></canvas>
+
+
+
+<h3>Kategori ilk 10</h3>
+<canvas id="categoryChart"></canvas>
+
+
+<h3>Şehir ilk 10</h3>
+<canvas id="cityChart"></canvas>
+
+
+
+<h3>Sipariş Durumları</h3>
+<canvas id="statusChart"></canvas>
+<hr />
+<h3>En Çok Satan Ürünler</h3>
+<table>
+    <thead>
+        <tr>
+            <th>Ürün</th>
+            <th>ADet</th>
+            <th>Ciro</th>
+        </tr>
+    </thead>
+    <tbody id="topProducts">
+    </tbody>
+</table>
+
+@section Scripts{
+    <script>
+        document.addEventListener('DOMContentLoaded', ()=> SalesPulse.dashboard());
+    </script>
+}
