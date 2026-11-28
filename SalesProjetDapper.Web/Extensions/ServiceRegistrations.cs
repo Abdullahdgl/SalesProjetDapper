@@ -1,5 +1,6 @@
 ﻿using SalesProjetDapper.Web.Context;
 using SalesProjetDapper.Web.Services.Dashboard;
+using SalesProjetDapper.Web.Services.Orders;
 
 namespace SalesProjetDapper.Web.Extensions
 {
@@ -9,6 +10,7 @@ namespace SalesProjetDapper.Web.Extensions
 		{
 			services.AddScoped<AppDbContext>();
 			services.AddScoped<IDashboardService, DashboardService>();
+			services.AddScoped<IOrderService, OrderService>();
 		}
 	}
 }
